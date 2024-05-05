@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Span};
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
@@ -7,58 +7,48 @@ use syn::{parse_macro_input, DeriveInput};
 pub fn derive(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     // https://docs.rs/syn/latest/syn/struct.DeriveInput.html
-    let input: DeriveInput = parse_macro_input!(input as DeriveInput);
+    let src: DeriveInput = parse_macro_input!(input as DeriveInput);
+    match derive_builder(src) {
+        Ok(val) => val,
+        Err(err) => panic!("{}", err),
+    }
+}
 
+fn derive_builder(input: DeriveInput) -> Result<TokenStream, &'static str> {
     // deriveInput must have ident and data
     // https://docs.rs/syn/latest/syn/struct.Ident.html
     let input_ident = &input.ident;
     // https://docs.rs/syn/latest/syn/enum.Data.html
     let input_data = &input.data;
 
-    let ident_builder = Ident::new(&format!("{}Builder", input_ident), Span::call_site());
+    let ident_builder = quote::format_ident!("{}Builder", input_ident);
 
-    // https://docs.rs/syn/latest/syn/struct.FieldsNamed.htm
-    let fields_named: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma> = match input_data {
-        // In test 02, we only need to handle Struct
-        // https://docs.rs/syn/latest/syn/struct.DataStruct.html
-        syn::Data::Struct(data_struct) => match &data_struct.fields {
-            // https://docs.rs/syn/latest/syn/enum.Fields.html
-            syn::Fields::Named(struct_fields) => &struct_fields.named,
-            _ => unimplemented!(),
-        },
-        _ => unimplemented!(),
+    // https://docs.rs/syn/latest/syn/struct.FieldsNamed.html
+    // &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>
+    let fields_named = match input_data {
+        syn::Data::Struct(syn::DataStruct {
+            fields: syn::Fields::Named(syn::FieldsNamed { named: val, .. }),
+            ..
+        }) => val,
+        _ => return Err("Parse suruno muri datta yo"),
     };
 
-    let fields = fields_named
-        // Punctuated<T, P> iter works for T not P
-        // https://docs.rs/syn/latest/src/syn/punctuated.rs.html#96-103
-        // In addition, this does not borrow the value,, so we can use fields_named again
-        .iter().map(|field: &syn::Field| {
-        let ident: &Ident = field.ident.as_ref().unwrap();
-        let ty: &syn::Type = &field.ty;
-        quote! {
-            #ident: Option<#ty>,
-        }
-    });
-    
-    let fields_init = fields_named.iter().map(|field: &syn::Field| {
-        let ident: &Ident = field.ident.as_ref().unwrap();
-        quote! {
-            #ident: None,
-        }
-    });
+    let mut fields = Vec::new();
+    let mut fields_init = Vec::new();
+    let mut field_setter = Vec::new();
 
-    let fields_setters = fields_named.iter().map(|field: &syn::Field| {
-        let ident: &Ident = field.ident.as_ref().unwrap();
-        let ty: &syn::Type = &field.ty;
-        quote! {
-            fn #ident(&mut self, #ident: #ty) -> &mut Self {
-                self.#ident = Some(#ident);
-                self
-            }
-        }
-    });
-    
+    // Punctuated<T, P> iter works for T not P
+    // https://docs.rs/syn/latest/src/syn/punctuated.rs.html#96-103
+    // In addition, this does not borrow the value,, so we can use fields_named again
+    for field in fields_named.iter() {
+        let ident = field.ident.as_ref().unwrap();
+        let ty = &field.ty;
+
+        fields.push(create_field(ident, ty));
+        fields_init.push(create_init(ident));
+        field_setter.push(create_setter(ident, ty));
+    }
+
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
         pub struct #ident_builder {
@@ -66,7 +56,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
 
         impl #ident_builder {
-            #(#fields_setters)*
+            #(#field_setter)*
         }
 
         impl #input_ident {
@@ -80,5 +70,25 @@ pub fn derive(input: TokenStream) -> TokenStream {
     };
 
     // Hand the output tokens back to the compiler
-    TokenStream::from(expanded)
+    Ok(expanded.into())
+}
+
+fn create_field(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
+    quote! {
+        #ident: Option<#ty>,
+    }
+}
+
+fn create_init(ident: &syn::Ident) -> TokenStream2 {
+    quote! {
+        #ident: None,
+    }
+}
+fn create_setter(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
+    quote! {
+        fn #ident(&mut self, #ident: #ty) -> &mut Self {
+            self.#ident = Some(#ident);
+            self
+        }
+    }
 }
