@@ -46,11 +46,21 @@ fn derive_builder(input: DeriveInput) -> Result<TokenStream, &'static str> {
         let ident = field.ident.as_ref().unwrap();
         let ty = &field.ty;
 
-        fields.push(create_field(ident, ty));
-        fields_init.push(create_init(ident));
-        fields_setter.push(create_setter(ident, ty));
+        let detailed_type = get_detailed_type(ty).unwrap();
+        let is_option = &detailed_type.ident.to_string() == "Option";
 
-        struct_element.push(create_struct_element(ident));
+        if is_option {
+            let inner_type = unwrap_type(&detailed_type);
+            
+            fields.push(create_field(ident, ty));
+            fields_setter.push(create_setter(ident, inner_type.unwrap()));
+        } else {
+            fields.push(create_option_field(ident, ty));
+            fields_setter.push(create_setter(ident, ty))
+        }
+        fields_init.push(create_init(ident));
+
+        struct_element.push(create_struct_element(ident, is_option));
     }
 
     // Build the output, possibly using quasi-quotation
@@ -87,6 +97,12 @@ fn derive_builder(input: DeriveInput) -> Result<TokenStream, &'static str> {
 
 fn create_field(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
     quote! {
+        #ident: #ty,
+    }
+}
+
+fn create_option_field(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
+    quote! {
         #ident: Option<#ty>,
     }
 }
@@ -106,8 +122,49 @@ fn create_setter(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
     }
 }
 
-fn create_struct_element(ident: &syn::Ident) -> TokenStream2 {
-    quote! {
-        #ident: self.#ident.clone().unwrap(),
+fn create_struct_element(ident: &syn::Ident, is_option: bool) -> TokenStream2 {
+    if is_option {
+        quote! {
+            #ident: self.#ident.clone(),
+        }
+    } else {
+        quote! {
+            #ident: self.#ident.clone().unwrap(),
+        }
+    }
+}
+
+fn get_detailed_type(ty: &syn::Type) -> Option<&syn::PathSegment> {
+    return match ty {
+        syn::Type::Path(
+            syn::TypePath{
+                path: syn::Path{
+                    segments: value,
+                    ..
+                },
+                ..
+            },
+        ) => value.first(),
+        _ => None,
+    };
+}
+
+// TODO: this function supports only Option
+fn unwrap_type(detailed_type: &syn::PathSegment) -> Option<&syn::Type> {
+    if detailed_type.ident.to_string() == "Option" {
+        let ret = match detailed_type.arguments {
+            syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+                args: ref value,
+                ..
+            }) => value.first().unwrap(),
+            _ => return None,
+        };
+        if let syn::GenericArgument::Type(ref val) = ret {
+            Some(val)
+        } else {
+            None
+        }
+    } else {
+        None
     }
 }
