@@ -47,11 +47,26 @@ pub fn derive(input: TokenStream) -> TokenStream {
             #ident: None,
         }
     });
+
+    let fields_setters = fields_named.iter().map(|field: &syn::Field| {
+        let ident: &Ident = field.ident.as_ref().unwrap();
+        let ty: &syn::Type = &field.ty;
+        quote! {
+            fn #ident(&mut self, #ident: #ty) -> &mut Self {
+                self.#ident = Some(#ident);
+                self
+            }
+        }
+    });
     
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
         pub struct #ident_builder {
             #(#fields)*
+        }
+
+        impl #ident_builder {
+            #(#fields_setters)*
         }
 
         impl #input_ident {
