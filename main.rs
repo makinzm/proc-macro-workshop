@@ -11,12 +11,13 @@
 use derive_builder::Builder;
 
 #[derive(Builder)]
-pub struct ACommand {
+pub struct Command {
     executable: String,
+    #[builder(each = "arg")]
     args: Vec<String>,
+    #[builder(each = "env")]
     env: Vec<String>,
-    current_dir: String,
-    hello: String,
+    current_dir: Option<String>,
 }
 
 fn main() {}

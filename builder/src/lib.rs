@@ -3,7 +3,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
-#[proc_macro_derive(Builder)]
+#[proc_macro_derive(Builder, attributes(builder))]
 pub fn derive(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     // https://docs.rs/syn/latest/syn/struct.DeriveInput.html
@@ -43,6 +43,15 @@ fn derive_builder(input: DeriveInput) -> Result<TokenStream, &'static str> {
     // https://docs.rs/syn/latest/src/syn/punctuated.rs.html#96-103
     // In addition, this does not borrow the value,, so we can use fields_named again
     for field in fields_named.iter() {
+        if field.attrs.len() >= 1 {
+            let top_attr = &field.attrs[0];
+            let tokens = match &top_attr.meta {
+                syn::Meta::List(syn::MetaList{ tokens: val, .. }) => val,
+                _ => return Err("Cannot Parse Meta"),
+            };
+            dbg!(&tokens);
+        }
+
         let ident = field.ident.as_ref().unwrap();
         let ty = &field.ty;
 
