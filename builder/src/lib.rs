@@ -50,8 +50,8 @@ fn derive_builder(input: DeriveInput) -> Result<TokenStream, &'static str> {
         let is_option = &detailed_type.ident.to_string() == "Option";
 
         if is_option {
-            let inner_type = unwrap_type(&detailed_type);
-            
+            let inner_type = unwrap_type(detailed_type);
+
             fields.push(create_field(ident, ty));
             fields_setter.push(create_setter(ident, inner_type.unwrap()));
         } else {
@@ -136,22 +136,19 @@ fn create_struct_element(ident: &syn::Ident, is_option: bool) -> TokenStream2 {
 
 fn get_detailed_type(ty: &syn::Type) -> Option<&syn::PathSegment> {
     return match ty {
-        syn::Type::Path(
-            syn::TypePath{
-                path: syn::Path{
-                    segments: value,
-                    ..
-                },
-                ..
+        syn::Type::Path(syn::TypePath {
+            path: syn::Path {
+                segments: value, ..
             },
-        ) => value.first(),
+            ..
+        }) => value.first(),
         _ => None,
     };
 }
 
 // TODO: this function supports only Option
 fn unwrap_type(detailed_type: &syn::PathSegment) -> Option<&syn::Type> {
-    if detailed_type.ident.to_string() == "Option" {
+    if detailed_type.ident == "Option" {
         let ret = match detailed_type.arguments {
             syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
                 args: ref value,
